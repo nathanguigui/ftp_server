@@ -114,10 +114,9 @@ pub mod ftp_server {
     }
 
     fn parse_user_input(client_input: &str) -> ParsedInput {
-        let mut new_input = client_input.replace("\r\n", "");
-        new_input = client_input.replace("\n", "");
+        let new_input = client_input.replace("\r\n", "").replace("\n", "");
         let argv = new_input.split_whitespace().map(|s| s.to_string()).collect();
-        let mut result: ParsedInput = ParsedInput {
+        let result: ParsedInput = ParsedInput {
             argv,
             input: new_input,
         };
@@ -126,20 +125,29 @@ pub mod ftp_server {
 
     fn handle_user_command(mut stream: &TcpStream, client_state: &mut ConnectionState, parsed_input: ParsedInput) {
         let tmp = format!("{} ", parsed_input.argv[0]).to_string();
-        let mut split_name = parsed_input.input.split(&tmp);
+        let split_name = parsed_input.input.split(&tmp);
         let name: Vec<&str> = split_name.collect();
         if parsed_input.argv.len() < 2 {
-            stream.write("530 Permission denied.\r\n".as_bytes());
+            match stream.write("530 Permission denied.\r\n".as_bytes()) {
+                Ok(_) => {}
+                _ => {}
+            }
         } else {
-            stream.write("331 Please specify the password.\r\n".as_bytes());
+            match stream.write("331 Please specify the password.\r\n".as_bytes()) {
+                Ok(_) => {}
+                _ => {}
+            }
             client_state.username = name[1].to_string();
         }
     }
 
-    fn handle_pass_command(mut stream: &TcpStream, client_state: &mut ConnectionState, parsed_input: ParsedInput) {
+    fn handle_pass_command(mut stream: &TcpStream, client_state: &mut ConnectionState, _parsed_input: ParsedInput) {
         if client_state.username == "Anonymous".to_string() {
             client_state.connected = true;
-            stream.write("230 Login successful.\r\n".as_bytes());
+            match stream.write("230 Login successful.\r\n".as_bytes()) {
+                Ok(_) => {}
+                _ => {}
+            }
         }
     }
 
@@ -149,11 +157,14 @@ pub mod ftp_server {
         } else if client_state.username.len() != 0 && parsed_input.argv[0].to_uppercase() == "PASS".to_string() {
             handle_pass_command(stream, client_state, parsed_input);
         } else {
-            stream.write("530 Please login with USER and PASS.\r\n".as_bytes());
+            match stream.write("530 Please login with USER and PASS.\r\n".as_bytes()) {
+                Ok(_) => {}
+                _ => {}
+            };
         }
     }
 
-    fn handle_commands(mut stream: &TcpStream, client_input: &str, client_state: &mut ConnectionState) {
+    fn handle_commands(stream: &TcpStream, client_input: &str, client_state: &mut ConnectionState) {
         let parsed_input = parse_user_input(client_input);
         if client_state.connected {} else {
             handle_unauth_commands(&stream, parsed_input, client_state);
