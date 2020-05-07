@@ -2,13 +2,14 @@ pub mod ftp_server {
     extern crate ctrlc;
     extern crate getopts;
 
-    use std::thread;
+    use std::{thread, fs};
     use std::net::{TcpListener, TcpStream, Shutdown};
     use std::io::{Read, Write};
     use std::env;
     use std::process;
     use getopts::Options;
     use std::str;
+    use std::path::Path;
 
     struct ParsedParams {
         port: i32,
@@ -16,10 +17,10 @@ pub mod ftp_server {
         verbose: bool,
     }
 
-    struct ConnectionState {
+    struct ConnectionState<'a> {
         username: String,
         connected: bool,
-        current_path: String,
+        current_path: &'a Path,
     }
 
     struct ParsedInput {
@@ -142,9 +143,14 @@ pub mod ftp_server {
     }
 
     fn handle_pass_command(mut stream: &TcpStream, client_state: &mut ConnectionState, _parsed_input: ParsedInput) {
-        if client_state.username == "Anonymous".to_string() {
+        if client_state.username.to_uppercase() == "ANONYMOUS".to_string() {
             client_state.connected = true;
             match stream.write("230 Login successful.\r\n".as_bytes()) {
+                Ok(_) => {}
+                _ => {}
+            }
+        } else {
+            match stream.write("530 Login incorrect.\r\n".as_bytes()) {
                 Ok(_) => {}
                 _ => {}
             }
@@ -164,9 +170,32 @@ pub mod ftp_server {
         }
     }
 
+    fn handle_auth_commands(mut stream: &TcpStream, parsed_input: ParsedInput, client_state: &mut ConnectionState) {
+        if parsed_input.argv[0].to_uppercase() == "HELP".to_string() {
+            stream.write("214-The following commands are recognized.\r\n".as_bytes()).unwrap();
+            stream.write("214 Help OK.\r\n".as_bytes()).unwrap();
+        }
+        if parsed_input.argv[0].to_uppercase() == "PWD".to_string() {
+            stream.write(format!("257 {:?}\r\n", fs::canonicalize(client_state.current_path).unwrap()).as_bytes()).unwrap();
+        }
+    }
+
+    fn handle_quit_command(mut stream: &TcpStream, parsed_input: &ParsedInput, client_state: &mut ConnectionState) {
+        if *parsed_input.argv[0].to_uppercase() == "QUIT".to_string() {
+            match stream.write("221 Goodbye.\r\n".as_bytes()) {
+                Ok(_) => {}
+                _ => {}
+            };
+            stream.shutdown(Shutdown::Both).unwrap();
+        }
+    }
+
     fn handle_commands(stream: &TcpStream, client_input: &str, client_state: &mut ConnectionState) {
         let parsed_input = parse_user_input(client_input);
-        if client_state.connected {} else {
+        handle_quit_command(&stream, &parsed_input, client_state);
+        if client_state.connected {
+            handle_auth_commands(&stream, parsed_input, client_state);
+        } else {
             handle_unauth_commands(&stream, parsed_input, client_state);
         }
     }
@@ -176,9 +205,13 @@ pub mod ftp_server {
         let mut state: ConnectionState = ConnectionState {
             username: "".to_string(),
             connected: false,
-            current_path: base_path,
+            current_path: Path::new(&base_path),
         };
         let peer_ip = stream.peer_addr().unwrap();
+        match stream.write("220 Rust FTP.\r\n".as_bytes()) {
+            Ok(_) => {}
+            _ => {}
+        }
         while match stream.read(&mut data) {
             Ok(size) => {
                 if size != 0 {
